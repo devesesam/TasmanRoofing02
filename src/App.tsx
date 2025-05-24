@@ -1,16 +1,30 @@
-import { useState } from 'react'
+import { useEffect } from 'react';
+import { useAuthStore } from './store/authStore';
+import Login from './components/Login';
+import Dashboard from './components/Dashboard';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
-  return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <h1 className="text-3xl font-bold text-center mb-8">Tasman Roofing Job Scheduler</h1>
-      <div className="bg-white rounded-lg shadow p-6">
-        <p className="text-center text-gray-600">
-          Welcome to the Tasman Roofing Job Scheduler application
-        </p>
+  const { user, loading, checkAuth } = useAuthStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
-    </div>
-  )
+    );
+  }
+
+  return (
+    <>
+      <Toaster position="top-right" />
+      {!user ? <Login /> : <Dashboard />}
+    </>
+  );
 }
 
-export default App
+export default App;
