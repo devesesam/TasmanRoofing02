@@ -15,6 +15,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -103,6 +104,49 @@ export const useAuthStore = create<AuthState>((set) => ({
           loading: false 
         });
       }
+    } catch (error) {
+      set({ loading: false, error: (error as Error).message });
+    }
+  },
+
+  signup: async (name, email, password) => {
+    try {
+      set({ loading: true, error: null });
+      
+      // 1. Create auth user
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      
+      if (error) throw error;
+      if (!data.user) throw new Error('Signup failed - no user returned');
+      
+      // 2. Create user record in the users table
+      // Default to worker role for self-signup
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: data.user.id,
+          name,
+          email,
+          role: 'worker' // Default role for new signups
+        });
+      
+      if (insertError) {
+        // Rollback by deleting the auth user if possible
+        console.error('Failed to create user record:', insertError);
+        throw insertError;
+      }
+      
+      set({ 
+        loading: false,
+        error: 'Signup successful! Please wait for admin approval before logging in.'
+      });
+      
+      // Sign out after successful signup to require admin approval
+      await supabase.auth.signOut();
+      
     } catch (error) {
       set({ loading: false, error: (error as Error).message });
     }
