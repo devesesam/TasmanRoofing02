@@ -41,7 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           .from('users')
           .select('*')
           .eq('id', session.user.id)
-          .maybeSingle(); // Changed from single() to maybeSingle()
+          .maybeSingle();
           
         if (userError) {
           console.error('Error fetching user data:', userError);
@@ -54,10 +54,10 @@ export const useAuthStore = create<AuthState>((set) => ({
           // No user found with this ID in the users table
           console.warn(`No user record found in 'users' table for authenticated user ID: ${session.user.id}`);
           
-          // Let's also check if the email exists in the users table with a different ID
+          // Check if the email exists in the users table with a different ID
           const { data: emailCheck } = await supabase
             .from('users')
-            .select('id, email')
+            .select('id, email, name, role')
             .eq('email', session.user.email)
             .maybeSingle();
             
@@ -107,7 +107,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           .from('users')
           .select('*')
           .eq('id', data.user.id)
-          .maybeSingle(); // Changed from single() to maybeSingle()
+          .maybeSingle();
           
         if (userError) {
           console.error('Error fetching user data after login:', userError);
@@ -120,7 +120,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           // No user found with this ID in the users table
           console.warn(`No user record found in 'users' table for authenticated user ID: ${data.user.id}`);
           
-          // Let's check if the user exists with a different ID
+          // Check if the user exists with a different ID
           const { data: emailCheck } = await supabase
             .from('users')
             .select('id, email, name, role')
@@ -132,10 +132,85 @@ export const useAuthStore = create<AuthState>((set) => ({
           if (emailCheck) {
             console.warn(`Found user with same email but different ID in users table:`, emailCheck);
             
-            // Option: We could try to update the user record with the correct auth ID
-            // This would be a good place to add that functionality if needed
+            // Try to fix the issue by creating a user record with the auth ID
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert({
+                id: data.user.id,
+                name: emailCheck.name || email.split('@')[0], // Use existing name or derive from email
+                email: email,
+                role: emailCheck.role || 'worker' // Use existing role or default to worker
+              });
+              
+            if (insertError) {
+              console.error('Failed to create user record for existing auth user:', insertError);
+              throw new Error(`Failed to sync your account. Please contact an administrator. Error: ${insertError.message}`);
+            }
+            
+            console.log('Created new user record to match auth ID');
+            
+            // Fetch the newly created user record
+            const { data: newUserData, error: newUserError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .maybeSingle();
+              
+            if (newUserError) {
+              console.error('Error fetching new user data:', newUserError);
+              throw newUserError;
+            }
+            
+            console.log('New user data:', newUserData);
+            
+            if (newUserData) {
+              set({ 
+                user: newUserData,
+                loading: false 
+              });
+              return;
+            }
+          } else {
+            // No matching email found in users table
+            // Create a new user record with default values
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert({
+                id: data.user.id,
+                name: email.split('@')[0], // Default name from email
+                email: email,
+                role: 'worker' // Default role
+              });
+              
+            if (insertError) {
+              console.error('Failed to create user record for auth user:', insertError);
+              throw new Error(`Failed to create your account. Please contact an administrator. Error: ${insertError.message}`);
+            }
+            
+            console.log('Created new user record for auth user');
+            
+            // Fetch the newly created user record
+            const { data: newUserData, error: newUserError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .maybeSingle();
+              
+            if (newUserError) {
+              console.error('Error fetching new user data:', newUserError);
+              throw newUserError;
+            }
+            
+            if (newUserData) {
+              set({ 
+                user: newUserData,
+                loading: false 
+              });
+              return;
+            }
           }
           
+          // If we get here, we failed to create or find a user record
           set({ 
             user: null, 
             loading: false,
