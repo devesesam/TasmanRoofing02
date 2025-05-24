@@ -131,90 +131,14 @@ export const useAuthStore = create<AuthState>((set) => ({
           
           if (emailCheck) {
             console.warn(`Found user with same email but different ID in users table:`, emailCheck);
-            
-            // Try to fix the issue by creating a user record with the auth ID
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert({
-                id: data.user.id,
-                name: emailCheck.name || email.split('@')[0], // Use existing name or derive from email
-                email: email,
-                role: emailCheck.role || 'worker' // Use existing role or default to worker
-              });
-              
-            if (insertError) {
-              console.error('Failed to create user record for existing auth user:', insertError);
-              throw new Error(`Failed to sync your account. Please contact an administrator. Error: ${insertError.message}`);
-            }
-            
-            console.log('Created new user record to match auth ID');
-            
-            // Fetch the newly created user record
-            const { data: newUserData, error: newUserError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', data.user.id)
-              .maybeSingle();
-              
-            if (newUserError) {
-              console.error('Error fetching new user data:', newUserError);
-              throw newUserError;
-            }
-            
-            console.log('New user data:', newUserData);
-            
-            if (newUserData) {
-              set({ 
-                user: newUserData,
-                loading: false 
-              });
-              return;
-            }
-          } else {
-            // No matching email found in users table
-            // Create a new user record with default values
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert({
-                id: data.user.id,
-                name: email.split('@')[0], // Default name from email
-                email: email,
-                role: 'worker' // Default role
-              });
-              
-            if (insertError) {
-              console.error('Failed to create user record for auth user:', insertError);
-              throw new Error(`Failed to create your account. Please contact an administrator. Error: ${insertError.message}`);
-            }
-            
-            console.log('Created new user record for auth user');
-            
-            // Fetch the newly created user record
-            const { data: newUserData, error: newUserError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', data.user.id)
-              .maybeSingle();
-              
-            if (newUserError) {
-              console.error('Error fetching new user data:', newUserError);
-              throw newUserError;
-            }
-            
-            if (newUserData) {
-              set({ 
-                user: newUserData,
-                loading: false 
-              });
-              return;
-            }
           }
           
-          // If we get here, we failed to create or find a user record
+          // Instead of trying to create a user record (which violates RLS),
+          // just inform the user their account setup is incomplete
           set({ 
             user: null, 
             loading: false,
-            error: "User account not found. Please contact an administrator."
+            error: "User account not found or incomplete. Please contact an administrator to complete your account setup."
           });
           // Sign out the user since their account setup is incomplete
           await supabase.auth.signOut();
@@ -252,28 +176,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       
       console.log('Auth signup successful, user ID:', data.user.id);
       
-      // 2. Create user record in the users table
-      // Default to worker role for self-signup
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({
-          id: data.user.id,
-          name,
-          email,
-          role: 'worker' // Default role for new signups
-        });
-      
-      if (insertError) {
-        // Rollback by deleting the auth user if possible
-        console.error('Failed to create user record:', insertError);
-        throw insertError;
-      }
-      
-      console.log('User record created successfully in users table');
-      
+      // Due to RLS, we can't create the user record here
+      // Instead, inform the user they need admin approval
       set({ 
         loading: false,
-        error: 'Signup successful! Please wait for admin approval before logging in.'
+        error: 'Signup successful! Please contact an administrator to complete your account setup before logging in.'
       });
       
       // Sign out after successful signup to require admin approval
