@@ -28,7 +28,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ loading: true });
       const { data: { session } } = await supabase.auth.getSession();
       
+      console.log('Session check:', session ? 'Session exists' : 'No session');
+      
       if (session?.user) {
+        console.log('Auth user found:', { 
+          id: session.user.id, 
+          email: session.user.email 
+        });
+        
         // Fetch the user data from the users table
         const { data: userData, error: userError } = await supabase
           .from('users')
@@ -37,12 +44,27 @@ export const useAuthStore = create<AuthState>((set) => ({
           .maybeSingle(); // Changed from single() to maybeSingle()
           
         if (userError) {
+          console.error('Error fetching user data:', userError);
           throw userError;
         }
+        
+        console.log('User data from users table:', userData);
         
         if (!userData) {
           // No user found with this ID in the users table
           console.warn(`No user record found in 'users' table for authenticated user ID: ${session.user.id}`);
+          
+          // Let's also check if the email exists in the users table with a different ID
+          const { data: emailCheck } = await supabase
+            .from('users')
+            .select('id, email')
+            .eq('email', session.user.email)
+            .maybeSingle();
+            
+          if (emailCheck) {
+            console.warn(`Found user with same email but different ID: ${JSON.stringify(emailCheck)}`);
+          }
+          
           set({ user: null, loading: false });
           // Optionally sign out the user since their account setup is incomplete
           await supabase.auth.signOut();
@@ -57,6 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         set({ user: null, loading: false });
       }
     } catch (error) {
+      console.error('Auth check error:', error);
       set({ user: null, loading: false, error: (error as Error).message });
     }
   },
@@ -64,6 +87,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     try {
       set({ loading: true, error: null });
+      console.log('Attempting login with email:', email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -71,8 +95,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       
       if (error) {
+        console.error('Login error from Supabase Auth:', error);
         throw error;
       }
+      
+      console.log('Auth login successful, user ID:', data.user?.id);
       
       if (data.user) {
         // Fetch the user data from the users table
@@ -83,12 +110,32 @@ export const useAuthStore = create<AuthState>((set) => ({
           .maybeSingle(); // Changed from single() to maybeSingle()
           
         if (userError) {
+          console.error('Error fetching user data after login:', userError);
           throw userError;
         }
+        
+        console.log('User data from users table after login:', userData);
         
         if (!userData) {
           // No user found with this ID in the users table
           console.warn(`No user record found in 'users' table for authenticated user ID: ${data.user.id}`);
+          
+          // Let's check if the user exists with a different ID
+          const { data: emailCheck } = await supabase
+            .from('users')
+            .select('id, email, name, role')
+            .eq('email', email)
+            .maybeSingle();
+            
+          console.log('Email check in users table:', emailCheck);
+          
+          if (emailCheck) {
+            console.warn(`Found user with same email but different ID in users table:`, emailCheck);
+            
+            // Option: We could try to update the user record with the correct auth ID
+            // This would be a good place to add that functionality if needed
+          }
+          
           set({ 
             user: null, 
             loading: false,
@@ -105,6 +152,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         });
       }
     } catch (error) {
+      console.error('Login process error:', error);
       set({ loading: false, error: (error as Error).message });
     }
   },
@@ -112,6 +160,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signup: async (name, email, password) => {
     try {
       set({ loading: true, error: null });
+      console.log('Attempting signup with email:', email);
       
       // 1. Create auth user
       const { data, error } = await supabase.auth.signUp({
@@ -119,8 +168,14 @@ export const useAuthStore = create<AuthState>((set) => ({
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Signup error from Supabase Auth:', error);
+        throw error;
+      }
+      
       if (!data.user) throw new Error('Signup failed - no user returned');
+      
+      console.log('Auth signup successful, user ID:', data.user.id);
       
       // 2. Create user record in the users table
       // Default to worker role for self-signup
@@ -139,6 +194,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw insertError;
       }
       
+      console.log('User record created successfully in users table');
+      
       set({ 
         loading: false,
         error: 'Signup successful! Please wait for admin approval before logging in.'
@@ -148,6 +205,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       await supabase.auth.signOut();
       
     } catch (error) {
+      console.error('Signup process error:', error);
       set({ loading: false, error: (error as Error).message });
     }
   },
@@ -158,11 +216,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { error } = await supabase.auth.signOut();
       
       if (error) {
+        console.error('Logout error:', error);
         throw error;
       }
       
       set({ user: null, loading: false });
     } catch (error) {
+      console.error('Logout process error:', error);
       set({ loading: false, error: (error as Error).message });
     }
   },
