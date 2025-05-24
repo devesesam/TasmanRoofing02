@@ -33,10 +33,19 @@ export const useAuthStore = create<AuthState>((set) => ({
           .from('users')
           .select('*')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle(); // Changed from single() to maybeSingle()
           
         if (userError) {
           throw userError;
+        }
+        
+        if (!userData) {
+          // No user found with this ID in the users table
+          console.warn(`No user record found in 'users' table for authenticated user ID: ${session.user.id}`);
+          set({ user: null, loading: false });
+          // Optionally sign out the user since their account setup is incomplete
+          await supabase.auth.signOut();
+          return;
         }
         
         set({ 
@@ -70,10 +79,23 @@ export const useAuthStore = create<AuthState>((set) => ({
           .from('users')
           .select('*')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle(); // Changed from single() to maybeSingle()
           
         if (userError) {
           throw userError;
+        }
+        
+        if (!userData) {
+          // No user found with this ID in the users table
+          console.warn(`No user record found in 'users' table for authenticated user ID: ${data.user.id}`);
+          set({ 
+            user: null, 
+            loading: false,
+            error: "User account not found. Please contact an administrator."
+          });
+          // Sign out the user since their account setup is incomplete
+          await supabase.auth.signOut();
+          return;
         }
         
         set({ 
